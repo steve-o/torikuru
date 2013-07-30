@@ -1,0 +1,12 @@
+package archive;
+
+message Marketfeed {
+	required fixed32 tv_sec = 1;
+	required uint32 tv_usec = 2;
+	required uint32 message_type = 3;
+	required string service_name = 4;
+	required string item_name = 5;
+	optional bytes packed_buffer = 6;
+	optional string new_item_name = 7;
+}
+	

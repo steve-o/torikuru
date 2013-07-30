@@ -1,0 +1,3 @@
+The code is ported from a Win64 RFA+RSSL provider to Linux 64-bit consumer, then to 32-bit SSL consumer.
+
+A significant amount of comments, function names and boiler plate are not correct for a consumer.
