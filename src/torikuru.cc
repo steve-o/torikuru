@@ -271,9 +271,10 @@ torikuru::torikuru_t::Init ()
 					auto stream = std::make_shared<subscription_stream_t> ();
 					if (!(bool)stream)
 						return false;
-					if (!consumer->CreateItemStream (instrument.c_str(), stream))
-						return false;
-					streams_.emplace_back (stream);
+					if (consumer->CreateItemStream (instrument.c_str(), stream))
+						streams_.emplace_back (stream);
+					else
+						LOG(WARNING) << "Cannot create stream for \"" << instrument << "\".";
 				}
 				VLOG(1) << instrument;
 			}
@@ -532,12 +533,20 @@ torikuru::torikuru_t::Clear()
 
 /* Release everything with an RFA dependency. */
 	consumers_.clear();
-	assert (log_.use_count() <= 1);
+	CHECK (log_.use_count() <= 1);
 	log_.reset();
-	assert (event_queue_.use_count() <= 1);
+	CHECK (event_queue_.use_count() <= 1);
 	event_queue_.reset();
-	assert (rfa_.use_count() <= 1);
+
+/* Final tests before releasing RFA context */
+	chromium::debug::LeakTracker<consumer_t>::CheckForLeaks();
+	chromium::debug::LeakTracker<logging::rfa::LogEventProvider>::CheckForLeaks();
+
+/* No more RFA handles so close up context */
+	CHECK (rfa_.use_count() <= 1);
 	rfa_.reset();
+
+	chromium::debug::LeakTracker<rfa_t>::CheckForLeaks();
 }
 
 /* eof */

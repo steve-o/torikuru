@@ -29,6 +29,7 @@
 /* Protocol Buffers */
 #include <google/protobuf/io/gzip_stream.h>
 
+#include "chromium/debug/leak_tracker.hh"
 #include "rfa.hh"
 #include "config.hh"
 #include "deleter.hh"
@@ -167,9 +168,9 @@ namespace torikuru
 		std::unique_ptr<rfa::sessionLayer::MarketDataSubscriber, internal::destroy_deleter> market_data_subscriber_;
 
 /* RFA Error Item event consumer */
-		rfa::common::Handle* error_item_handle_;
+		std::shared_ptr<rfa::common::Handle> error_item_handle_;
 /* RFA Item event consumer */
-		rfa::common::Handle* item_handle_;
+		std::shared_ptr<rfa::common::Handle> item_handle_;
 
 		archive::Marketfeed mfeed_;
 		google::protobuf::io::CodedOutputStream* coded_stream_;
@@ -205,6 +206,8 @@ namespace torikuru
 		boost::posix_time::ptime last_activity_;
 		uint32_t cumulative_stats_[CONSUMER_PC_MAX];
 		uint32_t snap_stats_[CONSUMER_PC_MAX];
+
+		chromium::debug::LeakTracker<consumer_t> leak_tracker_;
 	};
 
 } /* namespace torikuru */

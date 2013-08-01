@@ -46,8 +46,6 @@ torikuru::consumer_t::consumer_t (
 	config_ (config),
 	rfa_ (rfa),
 	event_queue_ (event_queue),
-	error_item_handle_ (nullptr),
-	item_handle_ (nullptr),
 	coded_stream_ (coded_stream),
 	disable_update_ (false),
 	disable_refresh_ (false),
@@ -64,10 +62,8 @@ torikuru::consumer_t::consumer_t (
 torikuru::consumer_t::~consumer_t()
 {
 	VLOG(3) << "Unregistering RFA session clients.";
-	if (nullptr != item_handle_)
-		omm_consumer_->unregisterClient (item_handle_), item_handle_ = nullptr;
-	if (nullptr != error_item_handle_)
-		omm_consumer_->unregisterClient (error_item_handle_), error_item_handle_ = nullptr;
+	item_handle_.reset();
+	error_item_handle_.reset();
 	omm_consumer_.reset();
 	market_data_subscriber_.reset();
 	session_.reset();
@@ -116,8 +112,9 @@ throw (rfa::common::InvalidConfigurationException, rfa::common::InvalidUsageExce
 /* receive error events (OMMCmdErrorEvent) related to calls to submit(). */
 		VLOG(3) << "Registering OMM error interest.";	
 		rfa::sessionLayer::OMMErrorIntSpec ommErrorIntSpec;
-		error_item_handle_ = omm_consumer_->registerClient (event_queue_.get(), &ommErrorIntSpec, *this, nullptr /* closure */);
-		if (nullptr == error_item_handle_)
+		error_item_handle_.reset (omm_consumer_->registerClient (event_queue_.get(), &ommErrorIntSpec, *this, nullptr /* closure */),
+					  [this](rfa::common::Handle* handle) { omm_consumer_->unregisterClient (handle); });
+		if (!(bool)error_item_handle_)
 			return false;
 		
 		return SendLoginRequest();
@@ -133,7 +130,8 @@ throw (rfa::common::InvalidConfigurationException, rfa::common::InvalidUsageExce
 
 		VLOG(3) << "Registering market data status interest.";
 		rfa::sessionLayer::MarketDataSubscriberInterestSpec marketDataSubscriberInterestSpec;
-		error_item_handle_ = market_data_subscriber_->registerClient (*event_queue_.get(), marketDataSubscriberInterestSpec, *this, nullptr /* closure*/);
+		error_item_handle_.reset (market_data_subscriber_->registerClient (*event_queue_.get(), marketDataSubscriberInterestSpec, *this, nullptr /* closure*/),
+					  [this](rfa::common::Handle* handle) { market_data_subscriber_->unregisterClient (*handle); });
 		if (!(bool)error_item_handle_)
 			return false;
 
@@ -239,14 +237,15 @@ throw (rfa::common::InvalidUsageException)
 	VLOG(3) << "Registering OMM item interest for MMT_LOGIN.";
 	rfa::sessionLayer::OMMItemIntSpec ommItemIntSpec;
 	ommItemIntSpec.setMsg (&request);
-	item_handle_ = omm_consumer_->registerClient (event_queue_.get(), &ommItemIntSpec, *this, nullptr /* closure */);
+	item_handle_.reset (omm_consumer_->registerClient (event_queue_.get(), &ommItemIntSpec, *this, nullptr /* closure */),
+				[this](rfa::common::Handle* handle) { omm_consumer_->unregisterClient (handle); });
 	cumulative_stats_[CONSUMER_PC_MMT_LOGIN_SENT]++;
-	if (nullptr == item_handle_)
+	if (!(bool)item_handle_)
 		return false;
 
 /* Store negotiated Reuters Wire Format version information. */
 	rfa::data::Map map;
-	map.setAssociatedMetaInfo (*item_handle_);
+	map.setAssociatedMetaInfo (*item_handle_.get());
 	rwf_major_version_ = map.getMajorVersion();
 	rwf_minor_version_ = map.getMinorVersion();
 	LOG(INFO) << "RWF: { "
@@ -395,8 +394,10 @@ throw (rfa::common::InvalidUsageException)
 	}
 	const std::string key (item_name);
 	auto status = directory_.emplace (std::make_pair (key, item_stream));
-	assert (true == status.second);
-	assert (directory_.end() != directory_.find (key));
+	if (!status.second)
+		return false;
+	CHECK (true == status.second);
+	CHECK (directory_.end() != directory_.find (key));
 	DVLOG(4) << "Directory size: " << directory_.size();
 	last_activity_ = boost::posix_time::microsec_clock::universal_time();
 	return true;
