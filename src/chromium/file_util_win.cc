@@ -6,6 +6,16 @@
 
 #include <share.h>
 
+namespace chromium {
+
+bool PathExists(const std::string& path) {
+  return (GetFileAttributes(path.value().c_str()) != INVALID_FILE_ATTRIBUTES);
+}
+
+}  // namespace chromium
+
+// -----------------------------------------------------------------------------
+
 namespace file_util {
 
 FILE* OpenFile(const std::string& filename, const char* mode) {
