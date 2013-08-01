@@ -69,7 +69,7 @@ BEGIN
 		BLOCK "080904b0"
 		BEGIN
 			VALUE "CompanyName",      "Thomson Reuters"
-			VALUE "FileDescription",  "TREP-RT Consumer HTTP+WS Gateway"
+			VALUE "FileDescription",  "TREP-RT SSL+RSSL Capture Tool"
 			VALUE "FileVersion",      VER_FILEVERSION_STR
 			VALUE "InternalName",     "torikuru"
 			VALUE "LegalCopyright",   "Copyright 2013 Thomson Reuters"
