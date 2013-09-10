@@ -190,10 +190,10 @@ throw (rfa::common::InvalidUsageException)
 			fix_rfa_string_path (&name);
 			value.set (session_config.user_name.c_str());
 			if (!session_config.application_id.empty()) {
-				value.append ("+");
+				value.append ('+');
 				value.append (session_config.application_id.c_str());
 				if (!session_config.position.empty()) {
-					value.append ("+");
+					value.append ('+');
 					value.append (session_config.position.c_str());
 				}
 			}
