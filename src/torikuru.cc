@@ -377,6 +377,12 @@ torikuru::torikuru_t::Convert()
 		service_map.emplace (session.service_name, std::move (fs));
 	}
 
+	std::unordered_set<std::string> symbol_set;
+	if (!config_.instruments.empty()) {
+		for (const auto& instrument : config_.instruments)
+			symbol_set.emplace (instrument);
+	}
+
 	std::unordered_map<std::string, int> fid_map;
 	fid_map.emplace (std::string ("service"), 0);
 	fid_map.emplace (std::string ("symbol"), 0);
@@ -388,23 +394,32 @@ torikuru::torikuru_t::Convert()
 		lseek (input_fd, SEEK_SET, 0);
 		google::protobuf::io::FileInputStream input_stream (input_fd);
 		google::protobuf::io::GzipInputStream gzip_stream (&input_stream);
-		google::protobuf::io::CodedInputStream coded_stream (&gzip_stream);
-//		google::protobuf::io::CodedInputStream coded_stream (&input_stream);
 		std::unordered_set<std::string> fids;
 
-		coded_stream.SetTotalBytesLimit (1e+9, 1e+9);
 		size = 0;
-		while (coded_stream.ReadVarint32 (&size)) {
+		while (true) {
+			google::protobuf::io::CodedInputStream coded_stream (&gzip_stream);
+			if (!coded_stream.ReadVarint32 (&size))
+				break;
 			const int limit = coded_stream.PushLimit (size);
 			const bool is_valid = mfeed.ParseFromCodedStream (&coded_stream);
 			coded_stream.PopLimit (limit);
+
+/* filter on symbol name */
+			if (mfeed.has_item_name() &&
+			    !symbol_set.empty() &&
+			    symbol_set.end() == symbol_set.find (mfeed.item_name()))
+				continue;
+
 			if (is_valid &&
 			    msg.UnPack (const_cast<char*> (mfeed.packed_buffer().c_str()), mfeed.packed_buffer().size()) == TIBMSG_OK)
+			{
 				for (field.First (&msg); field.status == TIBMSG_OK; field.Next()) {
 					name.assign (field.Name(), field.NameSize() == 0 ? 0 : strlen (field.Name()));
 					if (fids.end() == fids.find (name))
 						fids.emplace (name);
 				}
+			}
 		}
 
 		std::vector<std::string> columns (fids.size());
@@ -423,30 +438,51 @@ torikuru::torikuru_t::Convert()
 		lseek (input_fd, SEEK_SET, 0);
 		google::protobuf::io::FileInputStream input_stream (input_fd);
 		google::protobuf::io::GzipInputStream gzip_stream (&input_stream);
-		google::protobuf::io::CodedInputStream coded_stream (&gzip_stream);
-//		google::protobuf::io::CodedInputStream coded_stream (&input_stream);
 		char buf[256];
 		timeval tv;
 		struct tm local_time = {0};
 		struct tm* tm_time = &local_time;
 		unsigned i = 0;
 
-		coded_stream.SetTotalBytesLimit (1e+9, 1e+9);
 		size = 0;
-		while (coded_stream.ReadVarint32 (&size)) {
+		while (true) {
+			google::protobuf::io::CodedInputStream coded_stream (&gzip_stream);
+			if (!coded_stream.ReadVarint32 (&size))
+				break;
 			const int limit = coded_stream.PushLimit (size);
 			const bool is_valid = mfeed.ParseFromCodedStream (&coded_stream);
 			coded_stream.PopLimit (limit);
+
+			LOG_IF(WARNING, mfeed.packed_buffer().size() == 0);
+			LOG_IF(WARNING, mfeed.packed_buffer().size() > 0xffff);
+
+			if (mfeed.has_item_name() &&
+			    !symbol_set.empty() &&
+			    symbol_set.end() == symbol_set.find (mfeed.item_name()))
+				continue;
+
 			if (is_valid &&
 			    msg.UnPack (const_cast<char*> (mfeed.packed_buffer().c_str()), mfeed.packed_buffer().size()) == TIBMSG_OK)
 			{
+				if (!mfeed.has_service_name()) {
+					LOG(WARNING) << "service name is blank";
+					continue;
+				}
+				if (!mfeed.has_item_name()) {
+					LOG(WARNING) << "item name is blank";
+					continue;
+				}
+				if (!mfeed.has_message_type()) {
+					LOG(WARNING) << "message type is blank";
+					continue;
+				}
 				std::vector<std::string> columns (fid_map.size());
 				columns[0] = mfeed.service_name();
 				columns[1] = mfeed.item_name();
 				{
 					std::ostringstream oss;
-					tv.tv_sec = mfeed.tv_sec();
-					tv.tv_usec = mfeed.tv_usec();
+					tv.tv_sec = mfeed.has_tv_sec() ? mfeed.tv_sec() : 0;
+					tv.tv_usec = mfeed.has_tv_usec() ? mfeed.tv_usec() : 0;
 					localtime_r (&tv.tv_sec, &local_time);
 					oss << std::setfill('0')
 				            << std::setw(4) << 1900 + tm_time->tm_year
@@ -469,7 +505,7 @@ torikuru::torikuru_t::Convert()
 					oss << mfeed.message_type();
 					columns[3] = oss.str();
 				}
-				for (field.First (&msg); field.status == TIBMSG_OK; field.Next()) {
+				for (field.First (&msg); field.status == TIBMSG_OK; field.Next()) { 
 					name.assign (field.Name(), field.NameSize() == 0 ? 0 : strlen (field.Name()));
 			                memset (buf, 0, sizeof (buf));
 			                if (field.Convert (buf, sizeof (buf)) != TIBMSG_OK) continue;
